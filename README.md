@@ -2,22 +2,23 @@
 
 Public web service that issues WhatsApp Session IDs for forks of EMPIRE BOT-WAN.
 
-## ⚠️ Hosting requirements
+## Hosting
 
-This service **must run on a persistent Node.js host**. It will not work on Vercel,
-Netlify Functions, or AWS Lambda — Baileys requires a long-lived process that holds
-an open WebSocket to WhatsApp for the entire pairing window (up to 5 minutes).
+Deploy this to any persistent Node host:
+- Back4App Web Deployment (free, no card)
+- Render, Railway, Koyeb, Fly.io
+- Any VPS
 
-**Supported hosts:​**
-- Render (free tier OK)
-- Railway
-- Koyeb (free tier OK)
-- Fly.io
-- Any VPS (DigitalOcean, Hetzner, Vultr, etc.)
+**Will not work on:​** Vercel, Netlify Functions, AWS Lambda, Cloudflare Workers
+(Baileys requires a long-lived process and persistent WebSocket.)
 
-## Local dev
+## Environment variables
 
-```bash
-cp .env.example .env
-npm install
-npm run dev
+| Variable | Default | Notes |
+|---|---|---|
+| `PORT` | `3000` | Port to listen on |
+| `HOST` | `0.0.0.0` | Bind address |
+| `BRAND_NAME` | `EMPIRE BOT-WAN` | Shown in UI and WhatsApp browser fingerprint |
+| `SESSION_PREFIX` | `EMPIRE~` | Prefix for generated Session IDs |
+| `PAIR_TIMEOUT_MS` | `300000` | How long users have to complete pairing |
+| `RATE_LIMIT_PER_HOUR` | `20` | Max pairings per IP per hour |
