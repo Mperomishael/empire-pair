@@ -1,6 +1,5 @@
 // server.js — Public session-ID generator portal for EMPIRE BOT-WAN.
-// Run on a persistent Node host (Render, Railway, Koyeb, Fly, VPS).
-console.log('🚀 server.js entrypoint reached');
+// Run on a persistent Node host (Back4App, Render, Railway, Koyeb, Fly, VPS).
 
 import 'dotenv/config';
 import express from 'express';
@@ -17,35 +16,29 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT             = parseInt(process.env.PORT || '3000', 10);
 const HOST             = process.env.HOST || '0.0.0.0';
 const BRAND            = process.env.BRAND_NAME || 'EMPIRE BOT-WAN';
-const PAIR_TIMEOUT_MS  = parseInt(process.env.PAIR_TIMEOUT_MS || '300000', 10); // 5 min
+const PAIR_TIMEOUT_MS  = parseInt(process.env.PAIR_TIMEOUT_MS || '300000', 10);
 const RATE_LIMIT       = parseInt(process.env.RATE_LIMIT_PER_HOUR || '20', 10);
 const SESSIONS_DIR     = './sessions';
 
+console.log('🚀 ' + BRAND + ' portal booting on ' + HOST + ':' + PORT);
+
 if (!fs.existsSync(SESSIONS_DIR)) fs.mkdirSync(SESSIONS_DIR, { recursive: true });
 
-// In-memory map: phone -> { code, formatted, status, sock, sessionPath, sessionId, createdAt }
 const pending = new Map();
 
-// ============================================================
-//  EXPRESS APP
-// ============================================================
 const app = express();
 app.use(express.json());
 app.set('trust proxy', 1);
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Per-IP rate limit on the pairing endpoint
 const pairLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,           // 1 hour
+  windowMs: 60 * 60 * 1000,
   max: RATE_LIMIT,
   standardHeaders: true,
   legacyHeaders: false,
   message: { ok: false, error: 'Too many pairing requests from this IP. Try again later.' },
 });
 
-// ============================================================
-//  HELPERS
-// ============================================================
 function normalizePhone(input) {
   return String(input || '').replace(/\D/g, '');
 }
@@ -60,11 +53,6 @@ function cleanupEntry(phone) {
   pending.delete(phone);
 }
 
-// ============================================================
-//  ROUTES
-// ============================================================
-
-// POST /api/pair — request a pairing code for a number
 app.post('/api/pair', pairLimiter, async (req, res) => {
   const phone = normalizePhone(req.body?.phone);
 
@@ -72,13 +60,11 @@ app.post('/api/pair', pairLimiter, async (req, res) => {
     return res.status(400).json({ ok: false, error: 'Invalid phone number. Use international format (e.g. 2348012345678).' });
   }
 
-  // Re-serve existing code if still awaiting
   const existing = pending.get(phone);
   if (existing && existing.status === 'awaiting') {
     return res.json({ ok: true, code: existing.code, formatted: existing.formatted, phone });
   }
 
-  // Wipe any stale folder
   const sessionPath = path.join(SESSIONS_DIR, phone);
   if (fs.existsSync(sessionPath)) fs.rmSync(sessionPath, { recursive: true, force: true });
 
@@ -94,8 +80,6 @@ app.post('/api/pair', pairLimiter, async (req, res) => {
     });
 
     sock.ev.on('creds.update', saveCreds);
-
-    // Wait briefly for socket to come up before requesting code
     await new Promise(r => setTimeout(r, 3000));
 
     const code = await sock.requestPairingCode(phone);
@@ -110,7 +94,6 @@ app.post('/api/pair', pairLimiter, async (req, res) => {
     };
     pending.set(phone, entry);
 
-    // Listen for successful link
     sock.ev.on('connection.update', (u) => {
       if (u.connection === 'open') {
         try {
@@ -118,8 +101,6 @@ app.post('/api/pair', pairLimiter, async (req, res) => {
           entry.sessionId = sessionId;
           entry.status = 'ready';
           console.log('🎉 Pairing complete for ' + phone);
-
-          // Disconnect portal-side socket so the user's host can take over cleanly
           setTimeout(() => { try { sock.end(); } catch {} }, 2000);
         } catch (e) {
           console.error('encode failed:', e.message);
@@ -132,7 +113,6 @@ app.post('/api/pair', pairLimiter, async (req, res) => {
       }
     });
 
-    // Auto-expire
     setTimeout(() => {
       const e = pending.get(phone);
       if (e && e.status === 'awaiting') {
@@ -149,7 +129,6 @@ app.post('/api/pair', pairLimiter, async (req, res) => {
   }
 });
 
-// GET /api/status/:phone — poll for session ID
 app.get('/api/status/:phone', (req, res) => {
   const phone = normalizePhone(req.params.phone);
   const entry = pending.get(phone);
@@ -163,28 +142,22 @@ app.get('/api/status/:phone', (req, res) => {
   });
 });
 
-// POST /api/done/:phone — client confirms it has the session ID; server cleans up
 app.post('/api/done/:phone', (req, res) => {
   const phone = normalizePhone(req.params.phone);
   cleanupEntry(phone);
   res.json({ ok: true });
 });
 
-// Health check
 app.get('/health', (_req, res) => {
   res.json({ ok: true, brand: BRAND, pending: pending.size, uptime: process.uptime() });
 });
 
-// ============================================================
-//  BOOT
-// ============================================================
 app.listen(PORT, HOST, () => {
   console.log('🌐 ' + BRAND + ' pairing portal running on http://' + HOST + ':' + PORT);
   console.log('   Rate limit: ' + RATE_LIMIT + ' requests/IP/hour');
   console.log('   Pair timeout: ' + (PAIR_TIMEOUT_MS / 1000) + 's');
 });
 
-// Graceful shutdown
 function shutdown() {
   console.log('🛑 Shutting down — cleaning ' + pending.size + ' pending pairings...');
   for (const phone of pending.keys()) cleanupEntry(phone);
@@ -192,6 +165,5 @@ function shutdown() {
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
-
 process.on('uncaughtException', (e) => console.error('🔥 uncaught:', e?.message || e));
 process.on('unhandledRejection', (e) => console.error('🔥 unhandled:', e?.message || e));
