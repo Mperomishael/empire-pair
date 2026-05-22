@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>EMPIRE BOT-WAN — Get Session ID</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+    color: #fff; min-height: 100vh;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .card {
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px; padding: 40px; max-width: 480px; width: 100%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  }
+  h1 { font-size: 28px; margin-bottom: 8px;
+       background: linear-gradient(90deg,#ffd700,#ff6b6b);
+       -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+       background-clip: text; }
+  .subtitle { color: rgba(255,255,255,0.6); font-size: 14px; margin-bottom: 30px; }
+  label { display: block; margin-bottom: 8px; font-size: 13px; color: rgba(255,255,255,0.7); }
+  input[type=text] {
+    width: 100%; padding: 14px 16px; background: rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
+    color: #fff; font-size: 16px; margin-bottom: 16px;
+  }
+  input[type=text]:focus { outline: none; border-color: #ffd700; }
+  button {
+    width: 100%; padding: 14px; background: linear-gradient(90deg,#ffd700,#ff6b6b);
+    color: #000; font-weight: 700; font-size: 15px; border: none; border-radius: 10px;
+    cursor: pointer; transition: transform 0.15s;
+  }
+  button:hover:not(:disabled) { transform: translateY(-2px); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .step { margin-top: 24px; padding: 18px; background: rgba(0,0,0,0.3); border-radius: 12px; }
+  .step.hidden { display: none; }
+  .code-display {
+    font-family: 'Courier New', monospace; font-size: 32px; letter-spacing: 8px;
+    text-align: center; padding: 20px; background: rgba(255,215,0,0.1);
+    border: 2px dashed #ffd700; border-radius: 12px; margin: 16px 0;
+    color: #ffd700; cursor: pointer; user-select: all;
+    transition: background 0.3s;
+  }
+  .session-box {
+    font-family: 'Courier New', monospace; font-size: 11px;
+    background: rgba(0,0,0,0.5); padding: 14px; border-radius: 8px;
+    word-break: break-all; max-height: 160px; overflow-y: auto;
+    border: 1px solid rgba(255,215,0,0.3); margin: 10px 0;
+  }
+  .copy-btn { background: #25d366 !important; color: #fff !important; padding: 10px !important; }
+  ol { padding-left: 20px; line-height: 1.8; font-size: 14px; }
+  ol li { margin-bottom: 6px; color: rgba(255,255,255,0.85); }
+  .status { font-size: 13px; color: #ffd700; margin: 10px 0; text-align: center; }
+  .spinner { display: inline-block; width: 16px; height: 16px;
+             border: 2px solid rgba(255,215,0,0.3); border-top-color: #ffd700;
+             border-radius: 50%; animation: spin 0.8s linear infinite;
+             vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  code { background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 4px;
+         font-size: 12px; color: #ffd700; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🤖 EMPIRE BOT-WAN</h1>
+  <p class="subtitle">Get your Session ID and deploy your own bot in 60 seconds.</p>
+
+  <div id="step1">
+    <label>Your WhatsApp number (with country code, no +)</label>
+    <input id="phone" type="text" placeholder="2348012345678" autocomplete="off" inputmode="numeric" />
+    <button id="getCode">Get Pairing Code</button>
+  </div>
+
+  <div id="step2" class="step hidden">
+    <p style="font-size:13px;color:rgba(255,255,255,0.7);">
+      Tap the code to copy, then paste it in WhatsApp →<br>
+      <strong>Linked Devices → Link with phone number instead</strong>
+    </p>
+    <div id="codeDisplay" class="code-display" title="Tap to copy">--------</div>
+    <p class="status"><span class="spinner"></span> Waiting for you to link... <span id="timer">5:00</span></p>
+  </div>
+
+  <div id="step3" class="step hidden">
+    <h3 style="color:#25d366;margin-bottom:10px;">✅ Your Session ID</h3>
+    <p style="font-size:12px;color:rgba(255,255,255,0.6);margin-bottom:8px;">
+      Copy this and set it as the <code>SESSION_ID</code> environment variable on your host:
+    </p>
+    <div id="sessionBox" class="session-box"></div>
+    <button id="copyBtn" class="copy-btn">📋 Copy Session ID</button>
+
+    <h3 style="margin-top:20px;font-size:15px;">🚀 Next steps</h3>
+    <ol>
+      <li>Fork the bot repo on GitHub</li>
+      <li>Click "Deploy" on Render / Railway / Koyeb</li>
+      <li>Set <code>SESSION_ID</code> to the string above</li>
+      <li>Set <code>OWNER_NUMBER</code> to your number</li>
+      <li>Deploy — you're live</li>
+    </ol>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let pollInterval, timerInterval;
+
+$('getCode').onclick = async () => {
+  const phone = $('phone').value.replace(/\D/g, '');
+  if (phone.length < 8) return alert('Enter a valid number with country code.');
+
+  $('getCode').disabled = true;
+  $('getCode').textContent = 'Generating...';
+
+  try {
+    const r = await fetch('/api/pair', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ phone })
+    });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error);
+
+    $('codeDisplay').textContent = data.formatted;
+    $('codeDisplay').onclick = () => {
+      navigator.clipboard.writeText(data.code);
+      $('codeDisplay').style.background = 'rgba(37,211,102,0.25)';
+      setTimeout(() => $('codeDisplay').style.background = 'rgba(255,215,0,0.1)', 600);
+    };
+    $('step1').classList.add('hidden');
+    $('step2').classList.remove('hidden');
+    startTimer();
+    startPolling(phone);
+  } catch (e) {
+    alert('Error: ' + e.message);
+    $('getCode').disabled = false;
+    $('getCode').textContent = 'Get Pairing Code';
+  }
+};
+
+function startTimer() {
+  let seconds = 5 * 60;
+  timerInterval = setInterval(() => {
+    seconds--;
+    const m = Math.floor(seconds / 60);
+    const s = String(seconds % 60).padStart(2, '0');
+    $('timer').textContent = m + ':' + s;
+    if (seconds <= 0) {
+      clearInterval(timerInterval);
+      clearInterval(pollInterval);
+      alert('Pairing timed out. Please refresh and try again.');
+      location.reload();
+    }
+  }, 1000);
+}
+
+function startPolling(phone) {
+  pollInterval = setInterval(async () => {
+    try {
+      const r = await fetch('/api/status/' + phone);
+      const data = await r.json();
+      if (data.status === 'ready') {
+        clearInterval(pollInterval);
+        clearInterval(timerInterval);
+        $('step2').classList.add('hidden');
+        $('step3').classList.remove('hidden');
+        $('sessionBox').textContent = data.sessionId;
+        $('copyBtn').onclick = () => {
+          navigator.clipboard.writeText(data.sessionId);
+          $('copyBtn').textContent = '✅ Copied!';
+          setTimeout(() => $('copyBtn').textContent = '📋 Copy Session ID', 2000);
+        };
+        fetch('/api/done/' + phone, { method: 'POST' });
+      } else if (data.status === 'expired' || data.status === 'error') {
+        clearInterval(pollInterval);
+        clearInterval(timerInterval);
+        alert('Pairing failed or expired. Please refresh and try again.');
+        location.reload();
+      }
+    } catch {}
+  }, 3000);
+}
+</script>
+</body>
+</html>
