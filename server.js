@@ -1,5 +1,5 @@
 // server.js — Public session-ID generator portal for EMPIRE BOT-WAN.
-// Run on a persistent Node host (Back4App, Render, Railway, Koyeb, Fly, VPS).
+// Run on a persistent Node host (Hetzner, Oracle, Render Starter, VPS).
 
 import 'dotenv/config';
 import express from 'express';
@@ -7,7 +7,11 @@ import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import { default as makeWASocket, useMultiFileAuthState } from '@whiskeysockets/baileys';
+import {
+  default as makeWASocket,
+  useMultiFileAuthState,
+  Browsers,
+} from '@whiskeysockets/baileys';
 import pino from 'pino';
 import { encodeSession } from './lib/sessionId.js';
 
@@ -70,17 +74,27 @@ app.post('/api/pair', pairLimiter, async (req, res) => {
 
   try {
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
+
     const sock = makeWASocket({
       auth: state,
       logger: pino({ level: 'silent' }),
       printQRInTerminal: false,
       syncFullHistory: false,
       markOnlineOnConnect: false,
-      browser: [BRAND, 'Chrome', '120.0.0'],
+      // 🔑 The fingerprint WhatsApp's pairing endpoint actually accepts in 2026
+      browser: Browsers.macOS('Safari'),
+      generateHighQualityLinkPreview: false,
     });
 
     sock.ev.on('creds.update', saveCreds);
-    await new Promise(r => setTimeout(r, 3000));
+
+    // Wait for the Noise handshake to fully settle before requesting code.
+    // Faster hosts may complete in 2s, slower ones need 4-5s.
+    await new Promise(r => setTimeout(r, 4500));
+
+    if (!sock.authState?.creds) {
+      throw new Error('Auth state failed to initialize');
+    }
 
     const code = await sock.requestPairingCode(phone);
     const formatted = code.match(/.{1,4}/g)?.join('-') || code;
@@ -95,20 +109,27 @@ app.post('/api/pair', pairLimiter, async (req, res) => {
     pending.set(phone, entry);
 
     sock.ev.on('connection.update', (u) => {
-      if (u.connection === 'open') {
+      const { connection, lastDisconnect } = u;
+
+      if (connection === 'open') {
         try {
           const sessionId = encodeSession(sessionPath);
           entry.sessionId = sessionId;
           entry.status = 'ready';
           console.log('🎉 Pairing complete for ' + phone);
-          setTimeout(() => { try { sock.end(); } catch {} }, 2000);
+          // Keep the socket alive a beat so WhatsApp finalizes its side,
+          // then close cleanly so the user's device owns the slot.
+          setTimeout(() => { try { sock.end(); } catch {} }, 2500);
         } catch (e) {
           console.error('encode failed:', e.message);
           entry.status = 'error';
           entry.errorMessage = e.message;
         }
       }
-      if (u.connection === 'close' && entry.status === 'awaiting') {
+
+      if (connection === 'close' && entry.status === 'awaiting') {
+        const reason = lastDisconnect?.error?.output?.statusCode;
+        console.log('⚠️ Socket closed for ' + phone + ' before pairing (code: ' + reason + ')');
         entry.status = 'expired';
       }
     });
@@ -121,9 +142,10 @@ app.post('/api/pair', pairLimiter, async (req, res) => {
       }
     }, PAIR_TIMEOUT_MS);
 
+    console.log('📨 Code issued for ' + phone + ': ' + formatted);
     res.json({ ok: true, code, formatted, phone });
   } catch (e) {
-    console.error('pair api error:', e.message);
+    console.error('pair api error for ' + phone + ':', e.message);
     cleanupEntry(phone);
     res.status(500).json({ ok: false, error: 'Could not generate pairing code. Try again in a minute.' });
   }
@@ -154,6 +176,7 @@ app.get('/health', (_req, res) => {
 
 app.listen(PORT, HOST, () => {
   console.log('🌐 ' + BRAND + ' pairing portal running on http://' + HOST + ':' + PORT);
+  console.log('   Browser fingerprint: macOS Safari');
   console.log('   Rate limit: ' + RATE_LIMIT + ' requests/IP/hour');
   console.log('   Pair timeout: ' + (PAIR_TIMEOUT_MS / 1000) + 's');
 });
