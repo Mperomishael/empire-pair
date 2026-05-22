@@ -5,3 +5,4 @@ sessions
 .gitignore
 *.log
 README.md
+.DS_Store
