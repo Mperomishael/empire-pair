@@ -1,6 +1,7 @@
 {
   "name": "empire-bot-pair",
   "version": "1.0.0",
+  "description": "Public WhatsApp Session ID generator portal for EMPIRE BOT-WAN forks.",
   "type": "module",
   "main": "server.js",
   "scripts": {
