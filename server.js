@@ -1,5 +1,6 @@
 // server.js — Public session-ID generator portal for EMPIRE BOT-WAN.
 // Run on a persistent Node host (Render, Railway, Koyeb, Fly, VPS).
+console.log('🚀 server.js entrypoint reached');
 
 import 'dotenv/config';
 import express from 'express';
